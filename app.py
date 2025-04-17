@@ -80,23 +80,30 @@ def get_coding_questions(tech_stack):
 def get_job_recommendations(position, location, remote=True):
     url = "https://jooble.org/api/"
     headers = {'Content-Type': 'application/json'}
-    params = {
-        "keywords": position,
-        "location": location,
-        "remote": remote,
-    }
     payload = {
         "keywords": position,
         "location": location,
+        "remote": remote
     }
-    response = requests.post(f"{url}{jooble_api_key}", json=payload, headers=headers)
-    if response.status_code == 200:
-        jobs = response.json().get('jobs', [])[:5]
-        formatted = []
-        for job in jobs:
-            formatted.append(f"🔹 **{job.get('title')}**\n📍 {job.get('location')}\n🔗 [Apply Here]({job.get('link')})")
-        return formatted if formatted else ["No job matches found."]
-    return ["⚠️ Could not fetch jobs."]
+
+    try:
+        response = requests.post(f"{url}{jooble_api_key}", json=payload, headers=headers)
+        if response.status_code == 200:
+            job_data = response.json()
+            jobs = job_data.get('jobs', []) or job_data.get('results', [])
+            if not jobs:
+                return ["⚠️ No jobs found for the provided position and location."]
+            formatted = []
+            for job in jobs[:5]:
+                title = job.get('title', 'No title')
+                location = job.get('location', 'N/A')
+                link = job.get('link', '#')
+                formatted.append(f"🔹 **{title}**\n📍 {location}\n🔗 [Apply Here]({link})")
+            return formatted
+        else:
+            return [f"⚠️ Jooble API returned status {response.status_code}: {response.text}"]
+    except Exception as e:
+        return [f"⚠️ Error while fetching jobs: {str(e)}"]
 
 # PDF Export
 def export_pdf(candidate_info, tech_qs, code_qs, job_recs):
@@ -190,7 +197,10 @@ def chat_logic(user_input):
         st.session_state.stage = "job_rec"
         recs = get_job_recommendations(info["Position"], info["Location"])
         st.session_state.job_recommendations = recs
-        return "💼 Based on your profile, here are some job recommendations:\n\n" + "\n\n".join(recs)
+        if recs and "No jobs" not in recs[0]:
+            return "💼 Based on your profile, here are some job recommendations:\n\n" + "\n\n".join(recs)
+        else:
+            return "❗ No jobs found for your profile. You can still download the report for review."
 
     elif stage == "job_rec":
         st.session_state.stage = "done"
@@ -232,9 +242,11 @@ else:
             st.markdown(job)
 
         if st.button("📄 Export as PDF"):
-            pdf_file = export_pdf(st.session_state.candidate_info,
-                                  st.session_state.tech_questions,
-                                  st.session_state.code_questions,
-                                  st.session_state.job_recommendations)
+            pdf_file = export_pdf(
+                st.session_state.candidate_info,
+                st.session_state.tech_questions or ["No technical questions generated."],
+                st.session_state.code_questions or ["No coding questions generated."],
+                st.session_state.job_recommendations or ["No job recommendations available."]
+            )
             with open(pdf_file, "rb") as f:
                 st.download_button(label="📥 Download PDF", data=f, file_name="HiringPartner_Candidate_Report.pdf")
