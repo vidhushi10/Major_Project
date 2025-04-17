@@ -24,37 +24,10 @@ An intelligent, LLM-powered Hiring Assistant chatbot built using **Streamlit** a
 
 ---
 
-## 🖼️ Demo
 
-https://loom.com/your-demo-link  
-*(Replace with your actual Loom or video demo)*
 
 ---
 
-## 📦 Installation & Setup
 
-### 🔧 Requirements
-
-- Python 3.9+
-- Ollama with Mistral model installed
-- Streamlit
-- Required libraries in `requirements.txt`
-
-### 📁 Setup
-
-```bash
-# Clone the repo
-git clone https://github.com/your-username/talent-assistant-bot.git
-cd talent-assistant-bot
-
-# (Optional) Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows use venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the app
-streamlit run app.py
 
 
