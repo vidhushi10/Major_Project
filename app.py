@@ -4,16 +4,19 @@ from groq import Groq
 import os
 from dotenv import load_dotenv
 import time
+import requests
+from fpdf import FPDF
 
 # Load environment variables
 load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
+jooble_api_key = os.getenv("JOOBLE_API_KEY")
 
 # GROQ client setup
 client = Groq(api_key=groq_api_key)
 
 # Streamlit config
-st.set_page_config(page_title="TalentScout AI - Hiring Assistant", page_icon="🧠", layout="centered")
+st.set_page_config(page_title="Hiring Partner AI", page_icon="🤝", layout="centered")
 
 # Custom CSS
 st.markdown("""
@@ -32,8 +35,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Title
-st.markdown("## 🧠 TalentScout AI Assistant")
-st.caption("Your intelligent virtual recruiter for smarter hiring decisions.")
+st.markdown("## 🤝 Hiring Partner Assistant")
+st.caption("Smarter hiring through intelligent conversations.")
 
 # Session states
 if "messages" not in st.session_state:
@@ -44,14 +47,18 @@ if "candidate_info" not in st.session_state:
     st.session_state.candidate_info = {}
 if "tech_questions" not in st.session_state:
     st.session_state.tech_questions = []
+if "code_questions" not in st.session_state:
+    st.session_state.code_questions = []
+if "job_recommendations" not in st.session_state:
+    st.session_state.job_recommendations = []
 if "end_chat" not in st.session_state:
     st.session_state.end_chat = False
 
-# GROQ chat function
+# Generate LLM response
 def generate_llm_response(prompt):
     try:
         response = client.chat.completions.create(
-            model="llama3-70b-8192",  # ✅ Updated model
+            model="llama3-8b-8192",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7
         )
@@ -59,10 +66,73 @@ def generate_llm_response(prompt):
     except Exception as e:
         return f"⚠️ Error: {e}"
 
-# Generate tech questions
+# Technical questions
 def get_technical_questions(tech_stack):
-    prompt = f"""You are an AI recruiter. Generate 3 concise technical questions EACH for the following technologies:\n{tech_stack}."""
+    prompt = f"""You are an AI recruiter. Generate 3 concise technical interview questions EACH for the following technologies:\n{tech_stack}."""
     return generate_llm_response(prompt)
+
+# High-level coding questions
+def get_coding_questions(tech_stack):
+    prompt = f"""As a senior AI interviewer, suggest 3 challenging coding questions based on the following tech stack:\n{tech_stack}."""
+    return generate_llm_response(prompt)
+
+# Job recommendations from Jooble API
+def get_job_recommendations(position, location, remote=True):
+    url = "https://jooble.org/api/"
+    headers = {'Content-Type': 'application/json'}
+    params = {
+        "keywords": position,
+        "location": location,
+        "remote": remote,
+    }
+    payload = {
+        "keywords": position,
+        "location": location,
+    }
+    response = requests.post(f"{url}{jooble_api_key}", json=payload, headers=headers)
+    if response.status_code == 200:
+        jobs = response.json().get('jobs', [])[:5]
+        formatted = []
+        for job in jobs:
+            formatted.append(f"🔹 **{job.get('title')}**\n📍 {job.get('location')}\n🔗 [Apply Here]({job.get('link')})")
+        return formatted if formatted else ["No job matches found."]
+    return ["⚠️ Could not fetch jobs."]
+
+# PDF Export
+def export_pdf(candidate_info, tech_qs, code_qs, job_recs):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, "Hiring Partner - Candidate Summary", ln=True, align='C')
+    pdf.ln(10)
+
+    for key, val in candidate_info.items():
+        pdf.multi_cell(0, 10, f"{key}: {val}")
+
+    pdf.ln(5)
+    pdf.set_font("Arial", style='B', size=12)
+    pdf.cell(200, 10, "Technical Questions", ln=True)
+    pdf.set_font("Arial", size=12)
+    for q in tech_qs:
+        pdf.multi_cell(0, 10, f"- {q}")
+
+    pdf.ln(5)
+    pdf.set_font("Arial", style='B', size=12)
+    pdf.cell(200, 10, "Coding Questions", ln=True)
+    pdf.set_font("Arial", size=12)
+    for q in code_qs:
+        pdf.multi_cell(0, 10, f"- {q}")
+
+    pdf.ln(5)
+    pdf.set_font("Arial", style='B', size=12)
+    pdf.cell(200, 10, "Recommended Jobs", ln=True)
+    pdf.set_font("Arial", size=12)
+    for job in job_recs:
+        pdf.multi_cell(0, 10, job.replace("🔹", "-").replace("📍", "Location:"))
+
+    pdf_path = "/tmp/candidate_summary.pdf"
+    pdf.output(pdf_path)
+    return pdf_path
 
 # Chat logic
 def chat_logic(user_input):
@@ -71,11 +141,11 @@ def chat_logic(user_input):
 
     if user_input.lower() in ["exit", "quit", "bye", "end"]:
         st.session_state.end_chat = True
-        return "✅ Thank you for chatting with TalentScout! We’ll be in touch shortly. Goodbye! 👋"
+        return "✅ Thank you for chatting with Hiring Partner! We’ll be in touch shortly. Goodbye! 👋"
 
     if stage == "greeting":
         st.session_state.stage = "full_name"
-        return "👋 Welcome! I’m your virtual assistant from TalentScout.\n\nCan I know your **full name**?"
+        return "👋 Welcome! I’m your virtual assistant from Hiring Partner.\n\nCan I know your **full name**?"
 
     elif stage == "full_name":
         info["Full Name"] = user_input
@@ -111,10 +181,18 @@ def chat_logic(user_input):
         info["Tech Stack"] = user_input
         st.session_state.stage = "questioning"
         tech_q = get_technical_questions(user_input)
+        code_q = get_coding_questions(user_input)
         st.session_state.tech_questions = tech_q.split("\n")
-        return f"🧪 Here are some questions based on your tech stack:\n\n{tech_q}"
+        st.session_state.code_questions = code_q.split("\n")
+        return f"🧪 Here are technical questions:\n\n{tech_q}\n\n💡 Coding questions:\n\n{code_q}"
 
     elif stage == "questioning":
+        st.session_state.stage = "job_rec"
+        recs = get_job_recommendations(info["Position"], info["Location"])
+        st.session_state.job_recommendations = recs
+        return "💼 Based on your profile, here are some job recommendations:\n\n" + "\n\n".join(recs)
+
+    elif stage == "job_rec":
         st.session_state.stage = "done"
         return "✅ That’s all I need for now. Thank you for your time! You’ll hear from us soon. 🙏"
 
@@ -128,7 +206,7 @@ with st.container():
 
 # Chat input
 if not st.session_state.end_chat:
-    user_prompt = st.chat_input("Type here to talk to TalentScout...")
+    user_prompt = st.chat_input("Type here to talk to Hiring Partner...")
     if user_prompt:
         st.session_state.messages.append({"role": "user", "content": user_prompt})
         bot_response = chat_logic(user_prompt)
@@ -136,7 +214,27 @@ if not st.session_state.end_chat:
         st.session_state.messages.append({"role": "assistant", "content": bot_response})
         st.rerun()
 else:
-    st.success("Conversation has ended. Refresh the page to restart.")
+    st.success("✅ Chat ended. Refresh to restart.")
     with st.expander("📄 Candidate Summary"):
         for k, v in st.session_state.candidate_info.items():
             st.markdown(f"**{k}:** {v}")
+
+        st.markdown("### 🧪 Technical Questions")
+        for q in st.session_state.tech_questions:
+            st.markdown(f"- {q}")
+
+        st.markdown("### 💡 Coding Questions")
+        for q in st.session_state.code_questions:
+            st.markdown(f"- {q}")
+
+        st.markdown("### 💼 Job Recommendations")
+        for job in st.session_state.job_recommendations:
+            st.markdown(job)
+
+        if st.button("📄 Export as PDF"):
+            pdf_file = export_pdf(st.session_state.candidate_info,
+                                  st.session_state.tech_questions,
+                                  st.session_state.code_questions,
+                                  st.session_state.job_recommendations)
+            with open(pdf_file, "rb") as f:
+                st.download_button(label="📥 Download PDF", data=f, file_name="HiringPartner_Candidate_Report.pdf")
