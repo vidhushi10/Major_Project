@@ -1,33 +1,23 @@
 import streamlit as st
 from streamlit_chat import message
-import openai
+from groq import Groq
 import os
 from dotenv import load_dotenv
 import time
 
-# ----------------------------
-# Load GROQ API Key from .env
-# ----------------------------
+# Load environment variables
 load_dotenv()
-openai.api_key = os.getenv("GROQ_API_KEY")
-openai.api_base = "https://api.groq.com/openai/v1"
+groq_api_key = os.getenv("GROQ_API_KEY")
 
-# ----------------------------
-# Set Custom Page Config
-# ----------------------------
+# GROQ client setup
+client = Groq(api_key=groq_api_key)
+
+# Streamlit config
 st.set_page_config(page_title="TalentScout AI - Hiring Assistant", page_icon="🧠", layout="centered")
 
-# ----------------------------
-# Custom CSS Styling
-# ----------------------------
+# Custom CSS
 st.markdown("""
     <style>
-    body {
-        background-color: #f5f7fa;
-    }
-    .st-emotion-cache-1avcm0n {
-        padding-top: 1rem;
-    }
     .stChatInputContainer {
         background: #fff;
         border-top: 2px solid #ccc;
@@ -38,35 +28,14 @@ st.markdown("""
         font-weight: bold;
         border-radius: 8px;
     }
-    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-        color: #003366;
-    }
-    .chat-container {
-        background-color: #ffffff;
-        padding: 1.2rem;
-        border-radius: 12px;
-        box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
-        margin-top: 1rem;
-    }
-    .info-box {
-        background-color: #eaf3ff;
-        padding: 0.8rem;
-        border-radius: 10px;
-        margin-bottom: 10px;
-        font-size: 15px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
-# ----------------------------
-# App Header
-# ----------------------------
+# Title
 st.markdown("## 🧠 TalentScout AI Assistant")
 st.caption("Your intelligent virtual recruiter for smarter hiring decisions.")
 
-# ----------------------------
-# State Init
-# ----------------------------
+# Session states
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "stage" not in st.session_state:
@@ -78,31 +47,24 @@ if "tech_questions" not in st.session_state:
 if "end_chat" not in st.session_state:
     st.session_state.end_chat = False
 
-# ----------------------------
-# GROQ LLM API Wrapper
-# ----------------------------
+# GROQ chat function
 def generate_llm_response(prompt):
     try:
-        with st.spinner("Thinking..."):
-            response = openai.ChatCompletion.create(
-                model="mixtral-8x7b-32768",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7
-            )
-            return response.choices[0].message["content"]
+        response = client.chat.completions.create(
+            model="mixtral-8x7b-32768",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
+        )
+        return response.choices[0].message.content
     except Exception as e:
-        return f"⚠️ Error generating response from GROQ: {e}"
+        return f"⚠️ Error: {e}"
 
-# ----------------------------
-# Tech Question Generator
-# ----------------------------
+# Generate tech questions
 def get_technical_questions(tech_stack):
     prompt = f"""You are an AI recruiter. Generate 3 concise technical questions EACH for the following technologies:\n{tech_stack}."""
     return generate_llm_response(prompt)
 
-# ----------------------------
-# Conversation Flow Logic
-# ----------------------------
+# Chat logic
 def chat_logic(user_input):
     info = st.session_state.candidate_info
     stage = st.session_state.stage
@@ -159,19 +121,14 @@ def chat_logic(user_input):
     else:
         return "❓ Hmm, I didn’t quite get that. Could you please rephrase?"
 
-# ----------------------------
-# Show Chat Interface
-# ----------------------------
+# Chat display
 with st.container():
     for i, msg in enumerate(st.session_state.messages):
         message(msg["content"], is_user=msg["role"] == "user", key=str(i))
 
-# ----------------------------
-# Chat Input
-# ----------------------------
+# Chat input
 if not st.session_state.end_chat:
     user_prompt = st.chat_input("Type here to talk to TalentScout...")
-
     if user_prompt:
         st.session_state.messages.append({"role": "user", "content": user_prompt})
         bot_response = chat_logic(user_prompt)
