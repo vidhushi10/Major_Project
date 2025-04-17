@@ -2,3 +2,4 @@
 streamlit-chat
 ollama
 groq
+python-dotenv
