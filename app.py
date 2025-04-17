@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import time
 import requests
 from fpdf import FPDF
+from io import BytesIO
 
 # Load environment variables
 load_dotenv()
@@ -80,30 +81,39 @@ def get_coding_questions(tech_stack):
 def get_job_recommendations(position, location, remote=True):
     url = "https://jooble.org/api/"
     headers = {'Content-Type': 'application/json'}
-    payload = {
-        "keywords": position,
-        "location": location,
-        "remote": remote
-    }
 
-    try:
-        response = requests.post(f"{url}{jooble_api_key}", json=payload, headers=headers)
-        if response.status_code == 200:
-            job_data = response.json()
-            jobs = job_data.get('jobs', []) or job_data.get('results', [])
-            if not jobs:
-                return ["⚠️ No jobs found for the provided position and location."]
-            formatted = []
-            for job in jobs[:5]:
-                title = job.get('title', 'No title')
-                location = job.get('location', 'N/A')
-                link = job.get('link', '#')
-                formatted.append(f"🔹 **{title}**\n📍 {location}\n🔗 [Apply Here]({link})")
-            return formatted
-        else:
-            return [f"⚠️ Jooble API returned status {response.status_code}: {response.text}"]
-    except Exception as e:
-        return [f"⚠️ Error while fetching jobs: {str(e)}"]
+    def fetch_jobs(keywords):
+        payload = {
+            "keywords": keywords,
+            "location": location,
+            "remote": remote
+        }
+        try:
+            response = requests.post(f"{url}{jooble_api_key}", json=payload, headers=headers)
+            if response.status_code == 200:
+                job_data = response.json()
+                jobs = job_data.get('jobs', []) or job_data.get('results', [])
+                return jobs
+            else:
+                return []
+        except Exception as e:
+            return []
+
+    jobs = fetch_jobs(position)
+
+    if not jobs:
+        jobs = fetch_jobs("fresher OR graduate OR entry level")
+
+    if not jobs:
+        return ["❗ No relevant jobs found even for freshers. Please try a broader location or position."]
+
+    formatted = []
+    for job in jobs[:5]:
+        title = job.get('title', 'No title')
+        location = job.get('location', 'N/A')
+        link = job.get('link', '#')
+        formatted.append(f"🔹 **{title}**\n📍 {location}\n🔗 [Apply Here]({link})")
+    return formatted
 
 # PDF Export
 def export_pdf(candidate_info, tech_qs, code_qs, job_recs):
@@ -137,9 +147,10 @@ def export_pdf(candidate_info, tech_qs, code_qs, job_recs):
     for job in job_recs:
         pdf.multi_cell(0, 10, job.replace("🔹", "-").replace("📍", "Location:"))
 
-    pdf_path = "/tmp/candidate_summary.pdf"
-    pdf.output(pdf_path)
-    return pdf_path
+    pdf_buffer = BytesIO()
+    pdf.output(pdf_buffer)
+    pdf_buffer.seek(0)
+    return pdf_buffer
 
 # Chat logic
 def chat_logic(user_input):
@@ -197,10 +208,7 @@ def chat_logic(user_input):
         st.session_state.stage = "job_rec"
         recs = get_job_recommendations(info["Position"], info["Location"])
         st.session_state.job_recommendations = recs
-        if recs and "No jobs" not in recs[0]:
-            return "💼 Based on your profile, here are some job recommendations:\n\n" + "\n\n".join(recs)
-        else:
-            return "❗ No jobs found for your profile. You can still download the report for review."
+        return "💼 Based on your profile, here are some job recommendations:\n\n" + "\n\n".join(recs)
 
     elif stage == "job_rec":
         st.session_state.stage = "done"
@@ -242,11 +250,15 @@ else:
             st.markdown(job)
 
         if st.button("📄 Export as PDF"):
-            pdf_file = export_pdf(
+            pdf_buffer = export_pdf(
                 st.session_state.candidate_info,
                 st.session_state.tech_questions or ["No technical questions generated."],
                 st.session_state.code_questions or ["No coding questions generated."],
                 st.session_state.job_recommendations or ["No job recommendations available."]
             )
-            with open(pdf_file, "rb") as f:
-                st.download_button(label="📥 Download PDF", data=f, file_name="HiringPartner_Candidate_Report.pdf")
+            st.download_button(
+                label="📥 Download PDF",
+                data=pdf_buffer,
+                file_name="HiringPartner_Candidate_Report.pdf",
+                mime="application/pdf"
+            )
