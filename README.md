@@ -1,4 +1,4 @@
-# 🧠 TalentScout - AI Hiring Assistant Chatbot
+ - AI Assistant Chatbot
 
 An intelligent, LLM-powered Hiring Assistant chatbot built using **Streamlit** and **Mistral (via Ollama)**. This chatbot is designed for initial candidate screening at a fictional recruitment agency called **TalentScout**, specializing in technology placements.
 
