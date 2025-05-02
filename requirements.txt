@@ -1,6 +1,6 @@
 streamlit
 streamlit-chat
-python-dotenv
 groq
-requests
+python-dotenv
 fpdf
+requests
