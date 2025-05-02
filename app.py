@@ -7,11 +7,17 @@ import time
 import requests
 from fpdf import FPDF
 from io import BytesIO
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 
 # Load environment variables
 load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
 jooble_api_key = os.getenv("JOOBLE_API_KEY")
+sender_email = os.getenv("SENDER_EMAIL")
+sender_password = os.getenv("SENDER_PASSWORD")
 
 # GROQ client setup
 client = Groq(api_key=groq_api_key)
@@ -152,6 +158,29 @@ def export_pdf(candidate_info, tech_qs, code_qs, job_recs):
     pdf_buffer.seek(0)
     return pdf_buffer
 
+# Email sending
+def send_email_with_pdf(recipient_email, pdf_buffer):
+    message = MIMEMultipart()
+    message["From"] = sender_email
+    message["To"] = recipient_email
+    message["Subject"] = "Your Hiring Partner Candidate Report"
+
+    body = "Dear Candidate,\n\nAttached is your summary report from Hiring Partner.\n\nBest regards,\nHiring Partner Team"
+    message.attach(MIMEText(body, "plain"))
+
+    part = MIMEApplication(pdf_buffer.getvalue(), Name="HiringPartner_Candidate_Report.pdf")
+    part['Content-Disposition'] = 'attachment; filename="HiringPartner_Candidate_Report.pdf"'
+    message.attach(part)
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, recipient_email, message.as_string())
+        return True
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return False
+
 # Chat logic
 def chat_logic(user_input):
     info = st.session_state.candidate_info
@@ -232,7 +261,7 @@ if not st.session_state.end_chat:
         st.session_state.messages.append({"role": "assistant", "content": bot_response})
         st.rerun()
 else:
-    st.success("✅ Chat ended. Refresh to restart.")
+    st.success("✅ Chat ended. Report will be sent to your email shortly.")
     with st.expander("📄 Candidate Summary"):
         for k, v in st.session_state.candidate_info.items():
             st.markdown(f"**{k}:** {v}")
@@ -249,16 +278,20 @@ else:
         for job in st.session_state.job_recommendations:
             st.markdown(job)
 
-        if st.button("📄 Export as PDF"):
+        if st.button("📄 Export & Email Report"):
             pdf_buffer = export_pdf(
                 st.session_state.candidate_info,
                 st.session_state.tech_questions or ["No technical questions generated."],
                 st.session_state.code_questions or ["No coding questions generated."],
                 st.session_state.job_recommendations or ["No job recommendations available."]
             )
-            st.download_button(
-                label="📥 Download PDF",
-                data=pdf_buffer,
-                file_name="HiringPartner_Candidate_Report.pdf",
-                mime="application/pdf"
-            )
+
+            recipient = st.session_state.candidate_info.get("Email")
+            if recipient:
+                email_sent = send_email_with_pdf(recipient, pdf_buffer)
+                if email_sent:
+                    st.success(f"📧 Report sent to {recipient}")
+                else:
+                    st.error("❌ Failed to send email. Check logs or SMTP setup.")
+            else:
+                st.warning("⚠ No email address found in candidate info.")
